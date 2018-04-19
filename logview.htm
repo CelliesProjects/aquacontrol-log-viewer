@@ -4,6 +4,15 @@
 <title>Temperature</title>
 <meta charset="utf-8">
 <link rel="icon" href="data:;base64,iVBORw0KGgo=">  <!--prevent favicon requests-->
+<script>
+/* ip addresses or dns names */
+const controllers = [ "https://vissen.wasietsmet.nl",
+                      "https://salamanders.wasietsmet.nl" ];
+/* names to display on button */
+const locations   = [ "vissen",
+                      "salamanders" ];
+const sensorColor = ["","rgba( 255,0, 0, 0.9)","rgba( 0,255,0, 0.9)","rgba( 0,0,255, 0.9)"];
+</script>
 <style>
 html, body{
   margin:0 auto;
@@ -37,9 +46,6 @@ p{
   margin:10px 0;
   overflow:hidden;
 }
-#hostName {
-  text-transform: uppercase;
-}
 #editorCanvas{
   background-color:darkgreen;
   border:solid 1px black;
@@ -56,31 +62,52 @@ p{
   overflow:hidden;
   margin:0;
 }
-.controlBox{
-  margin:10px;
+.controlBox, #locationBox {
+  margin: 10px;
   background-color: antiquewhite;
+  padding: 5px 0 0;
+  font-size:initial;
 }
-#fileList{
-  overflow:hidden;
-  width:100%;
-}
-.logFile:hover{
-  background-color: yellow;
-}
-.rangeButton, .baseButton, .hostButton{
-  width:50%;
-  height:30px;
+#locationBox{
+  padding:0;
 }
 .controlBox{
   display:none;
 }
+#fileList{
+  height:140px;
+  overflow-y:auto;
+  width:100%;
+}
+.logFile{
+  margin:auto;
+}
+.logFile:hover{
+  background-color: yellow;
+  cursor:pointer;
+}
+button:hover{
+  cursor:pointer;
+}
+.rangeButton, .baseButton{
+  width:50%;
+  //height:30px;
+}
+.locationButton{
+  width:100%;
+  height:30px;;
+}
+.sensorItem{
+  display:inline;
+}
 </style>
 <script src="https://code.jquery.com/jquery-3.2.1.js"></script>
 <body>
-<div class="hostName shadowedBox"><h3 id="hostName">NO LOCATION</h3></div>
-<div class="shadowedBox"><button class="hostButton ">HUISKAMER</button><button class="hostButton">SLAAPKAMER</button></div>
+<div class="shadowedBox">Aquacontrol log viewer</div>
+<div class="shadowedBox"><h3 id="locationName">CHOOSE A LOCATION</h3></div>
 <canvas class="shadowedBox" id="editorCanvas" width="800px" height="400px"></canvas>
   <div id="sideBox" class="shadowedBox">
+    <div class="shadowedBox" id="locationBox"></div>
     <div class="shadowedBox controlBox">
     <p class="sensorItem">CENTER:</p>
     <p id="baseStatus" class="sensorItem">base</p>
@@ -94,22 +121,24 @@ p{
     <div id="fileList"></div>
   </div>
 <script>
-const hostNameArray = [ "http://192.168.0.198", "http://192.168.0.199" ];
-var hostName = ''; //hostNameArray[0];
+var currentHost = '';
 var grapArea = document.getElementById( 'editorCanvas' );
 var rangeBottom = 10;
-var rangeTop    = 30;
-var sensorColor = ["","rgba( 255,0, 0, 0.9)","rgba( 0,255,0, 0.9)","rgba( 0,0,255, 0.9)"];
-var sensorName  = [];
-var measurements;
+var rangeTop = 30;
+var sensorNames = [];
+var measurements = [];
 $( document ).ready( function() {
+  locations.forEach(function( item, index )
+  {
+    $('#locationBox').append( '<button class="locationButton">' + item + '</button>' );
+  });
   var ctx = grapArea.getContext( "2d" );
   ctx.textBaseline="middle";
   ctx.textAlign="center";
   ctx.strokeStyle = 'white';
   ctx.font = '30px serif';
   ctx.strokeText( "GREETINGS EARTHLING!", grapArea.width / 2,  grapArea.height / 3  );
-  ctx.strokeText( "PICK A HOST ABOVE TO COMMENCE PROCEEDINGS...", grapArea.width / 2,  grapArea.height / 2  );
+  ctx.strokeText( "PICK A LOCATION TO COMMENCE PROCEEDINGS...", grapArea.width / 2,  grapArea.height / 2  );
 });
 function map( x,  in_min,  in_max,  out_min,  out_max)
 {
@@ -117,31 +146,33 @@ function map( x,  in_min,  in_max,  out_min,  out_max)
 }
 function setNewHost()
 {
-  sensorName = [];
-  $('#fileList').html( '' );
-  $.get( hostName + "/api/getdevice?hostname=")
-    .done(function( data ){
-      //$( "#hostName" ).html( data + " LOG FILES");
-      //document.title = data.toUpperCase();
-      $.get( hostName + '/api/getdevice?files=', function( data )
+  sensorNames = [];
+  $.get( currentHost + '/api/getdevice?files=')
+  .done( function( data )
+  {
+    var fileArray = data.split('\n');
+    fileArray.sort();
+    $('#fileList').html( '' );
+    for ( f = 0; f < fileArray.length; f++ )
+    {
+      if ( fileArray[f].substring( 11, 15 ) == '.log' )
       {
-        var fileArray = data.split('\n');
-        fileArray.sort();
-        for ( f = 0; f < fileArray.length; f++ )
-        {
-          if ( fileArray[f].substring( 11, 15 ) == '.log' )
-          {
-            $('#fileList').append( '<div class="logFile">'+ fileArray[f].substring( 1, 11 ) + "</div>" );
-          }
-        }
-        $('.logFile').last().click();
-      });
-    })
+        $('#fileList').append( '<div class="logFile">'+ fileArray[f].substring( 1, 11 ) + "</div>" );
+      }
+    }
+    $('.logFile').last().click();
+    var mydiv = $('#fileList')
+    mydiv.scrollTop(mydiv.prop("scrollHeight"));
+  })
+  .fail( function( data )
+  {
+    console.log( "something went wrong" );
+  });
 }
 function showAllChannelColors()
 {
   var currentSensor = 1;
-  while ( sensorName[ currentSensor ] )
+  while ( sensorNames[ currentSensor ] )
   {
     showChannelColor( currentSensor );
     currentSensor++;
@@ -153,7 +184,7 @@ function showChannelColor( sensor )
   ctx.textBaseline="middle";
   ctx.textAlign="left";
   ctx.strokeStyle = sensorColor[ sensor ];
-  ctx.strokeText( sensorName[ sensor ], 75,  grapArea.height - 40 - ( sensor ) * 20  );
+  ctx.strokeText( sensorNames[ sensor ], 75,  grapArea.height - 40 - ( sensor ) * 20  );
   ctx.beginPath();
   ctx.strokeStyle = sensorColor[ sensor ];
   ctx.moveTo( 30, grapArea.height - 40 - sensor  * 20  );
@@ -196,14 +227,14 @@ function drawLogFile( url )
     }
     else
     {
-      $.get( hostName + '/api/getdevice?status=', function( data )
+      $.get( currentHost + '/api/getdevice?status=', function( data )
       {
         var statusData = data.split( '\n' );
         var offset = 7;
         while ( statusData[ offset ] )
         {
           var sensorData = statusData[ offset ].split(',');
-          sensorName[ offset - 6 ] = sensorData[0];
+          sensorNames[ offset - 6 ] = sensorData[0];
           showChannelColor( offset - 6 );
           offset++;
         }
@@ -300,9 +331,12 @@ $('#sideBox').on( 'click', '.logFile', function()
   if ( $(this).css( "background-color" ) == "rgb(0, 100, 0)" ) return;
   $( '.logFile' ).css( { "background-color" : "" } );
   $(this).css( { "background-color" : "rgb(0, 100, 0)" } );
-  var newurl = hostName + '/';
+  var newurl = currentHost + '/';
   newurl += $( this ).html() + '.log';
   drawLogFile( newurl );
+  var d = new Date( $(this).html() );
+  var s = d.toDateString()
+  $( "#locationName" ).html( s.substring(0, 15) );
 });
 function showRange()
 {
@@ -350,11 +384,14 @@ function drawAllGraphs()
   drawSingleChannel( 3, measurements, grapArea, sensorColor[3], rangeBottom, rangeTop, false );
   showAllChannelColors();
 }
-$( '.hostButton' ).on( 'click' , function()
+$( '#sideBox' ).on( 'click' ,'.locationButton', function()
 {
-  hostName = hostNameArray[ $(this).index() ];
+  const activeColor = "#ccff99";
+  if ( $(this).css( "background-color" ) == activeColor ) return;
+  $( '.locationButton' ).css( { "background-color" : "" } );
+  $( this ).css( { "background-color" : activeColor } );
+  currentHost = controllers[ $(this).index() ];
   setNewHost();
-  $( "#hostName" ).html( $(this).text() );
 });
 </script>
 </body>
